@@ -24,7 +24,7 @@ jobs:
             exit 1
           fi
           if [ ! -f "icon.png" ]; then
-            echo "❌ ERROR: icon.png not found! Please ensure your custom logo is named icon.png"
+            echo "❌ ERROR: icon.png not found!"
             exit 1
           fi
           echo "✅ Assets validated"
@@ -66,9 +66,7 @@ jobs:
       - name: Force Custom Logo Integration
         run: |
           echo "🎨 Overwriting stock templates with custom logo graphic..."
-          # Clear default adaptive XML directories so the device forces your PNG logo
           rm -rf android/app/src/main/res/mipmap-anydpi-v26
-          
           for folder in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             DIR="android/app/src/main/res/$folder"
             mkdir -p "$DIR"
@@ -76,35 +74,45 @@ jobs:
             cp icon.png "$DIR/ic_launcher_round.png"
             cp icon.png "$DIR/ic_launcher_foreground.png"
           done
-          echo "✅ Logo setup complete across all device profiles."
 
       - name: Fix Gradle Configuration (Flat Commands)
         run: |
           echo "🔧 Injecting dependency logic directly into build profile..."
           echo "configurations.all { resolutionStrategy { force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'; force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22' } }" >> android/app/build.gradle
           echo "android { aaptOptions { cruncherEnabled = false; useNewCruncher = false } }" >> android/app/build.gradle
-          echo "✅ Gradle files successfully patched!"
 
       - name: Build Android Preview APK
         run: |
           cd android
-          # 🚀 standard assembleRelease compiles a regular installable .apk file instead of an .aab
           ./gradlew clean assembleRelease
 
-      - name: Verify APK Output
+      - name: Sign APK for Device Installation
+        run: |
+          echo "🔐 Generating debug key and signing APK..."
+          # 1. Create a temporary debug keystore matrix on the flyer
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          
+          # 2. Locate apksigner utility from Android SDK Build Tools
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          
+          # 3. Digitally sign the unsigned package file
+          $BUILD_TOOLS_DIR/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out android/app/build/outputs/apk/release/CartoonThiefAuto-Preview.apk android/app/build/outputs/apk/release/app-release-unsigned.apk
+          echo "✅ APK successfully signed and prepared for deployment!"
+
+      - name: Verify Signed APK Output
         run: |
           echo "📍 Verifying generated preview APK binary..."
-          if [ -f "android/app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
-            echo "✅ Preview APK Found!"
+          if [ -f "android/app/build/outputs/apk/release/CartoonThiefAuto-Preview.apk" ]; then
+            echo "✅ Signed Installable APK Found!"
           else
-            echo "❌ Critical Error: Build didn't emit an APK package."
+            echo "❌ Critical Error: Signed target binary was not found."
             exit 1
           fi
 
-      - name: Upload Unsigned Preview APK Artifact
+      - name: Upload Signed Preview APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CartoonThiefAuto-Preview-APK
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          name: CartoonThiefAuto-Installable-APK
+          path: android/app/build/outputs/apk/release/CartoonThiefAuto-Preview.apk
           retention-days: 14
           
