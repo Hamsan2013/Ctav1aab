@@ -1,0 +1,110 @@
+name: Build Preview APK (Custom Asset Engine)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Required Assets
+        run: |
+          echo "📋 Checking for required assets..."
+          if [ ! -f "CTA-CartoonThiefAuto-V3-Fixed.html" ]; then
+            echo "❌ ERROR: CTA-CartoonThiefAuto-V3-Fixed.html not found!"
+            exit 1
+          fi
+          if [ ! -f "icon.png" ]; then
+            echo "❌ ERROR: icon.png not found! Please ensure your custom logo is named icon.png"
+            exit 1
+          fi
+          echo "✅ Assets validated"
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Android SDK Tools
+        uses: android-actions/setup-android@v4
+
+      - name: Create Web Distribution Structure
+        run: |
+          mkdir -p www
+          cp CTA-CartoonThiefAuto-V3-Fixed.html www/index.html
+          cp icon.png www/icon.png
+
+      - name: Initialize App Framework
+        run: |
+          npm install @capacitor/core @capacitor/cli --save
+          npx cap init "CTA Cartoon Thief Auto" "com.addevelopers.cartoonthiefauto" --web-dir=www
+
+      - name: Add Android Native Platform
+        run: |
+          npm install @capacitor/android --save
+          npx cap add android
+
+      - name: Sync Game HTML Assets
+        run: |
+          npx cap sync android
+
+      - name: Force Custom Logo Integration
+        run: |
+          echo "🎨 Overwriting stock templates with custom logo graphic..."
+          # Clear default adaptive XML directories so the device forces your PNG logo
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          
+          for folder in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            DIR="android/app/src/main/res/$folder"
+            mkdir -p "$DIR"
+            cp icon.png "$DIR/ic_launcher.png"
+            cp icon.png "$DIR/ic_launcher_round.png"
+            cp icon.png "$DIR/ic_launcher_foreground.png"
+          done
+          echo "✅ Logo setup complete across all device profiles."
+
+      - name: Fix Gradle Configuration (Flat Commands)
+        run: |
+          echo "🔧 Injecting dependency logic directly into build profile..."
+          echo "configurations.all { resolutionStrategy { force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'; force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22' } }" >> android/app/build.gradle
+          echo "android { aaptOptions { cruncherEnabled = false; useNewCruncher = false } }" >> android/app/build.gradle
+          echo "✅ Gradle files successfully patched!"
+
+      - name: Build Android Preview APK
+        run: |
+          cd android
+          # 🚀 standard assembleRelease compiles a regular installable .apk file instead of an .aab
+          ./gradlew clean assembleRelease
+
+      - name: Verify APK Output
+        run: |
+          echo "📍 Verifying generated preview APK binary..."
+          if [ -f "android/app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
+            echo "✅ Preview APK Found!"
+          else
+            echo "❌ Critical Error: Build didn't emit an APK package."
+            exit 1
+          fi
+
+      - name: Upload Unsigned Preview APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CartoonThiefAuto-Preview-APK
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 14
+          
