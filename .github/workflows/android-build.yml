@@ -47,11 +47,12 @@ jobs:
       - name: Sync Game HTML Assets
         run: npx cap sync android
 
-      - name: Overwrite Native Android Icons Globally
+      - name: Overwrite Native Android Icons Safely
         run: |
-          # If your custom icon exists, overwrite every single default placeholder layout inside Android Studio
           if [ -f icon.png ]; then
-            # Define all density resource locations where Android expects launcher assets
+            # 🌟 AAPT2 FIX 1: Remove adaptive XML configurations so Gradle safely uses your flat PNG instead
+            rm -rf android/app/src/main/res/mipmap-anydpi-v26
+            
             DIRS=(
               "android/app/src/main/res/mipmap-mdpi"
               "android/app/src/main/res/mipmap-hdpi"
@@ -62,16 +63,19 @@ jobs:
             
             for DIR in "${DIRS[@]}"; do
               mkdir -p "$DIR"
-              # Overwrite both standard, round, and foreground variations so your icon shows up on ALL phone screens
               cp icon.png "$DIR/ic_launcher.png"
               cp icon.png "$DIR/ic_launcher_round.png"
               cp icon.png "$DIR/ic_launcher_foreground.png"
             done
           fi
 
-      - name: Fix Kotlin Dependency Overlap
+      - name: Fix Kotlin and Disable PNG Crunching
         run: |
+          # Fix Kotlin libraries
           echo "configurations.all { resolutionStrategy { force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'; force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22' } }" >> android/app/build.gradle
+          
+          # 🌟 AAPT2 FIX 2: Force Gradle to bypass strict PNG file crunching validations
+          sed -i '/android {/a \    aaptOptions { cruncherEnabled = false; useNewCruncher = false }' android/app/build.gradle
 
       - name: Compile Official App Bundle (AAB)
         run: |
