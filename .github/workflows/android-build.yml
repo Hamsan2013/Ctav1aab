@@ -1,0 +1,86 @@
+name: Build Production AAB (Native Asset Engine)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Android SDK Tools
+        uses: android-actions/setup-android@v4
+
+      - name: Create Web Distribution Structure
+        run: |
+          mkdir -p www
+          cp CTA-CartoonThiefAuto-V3-Fixed.html www/index.html
+          if [ -f icon.png ]; then cp icon.png www/icon.png; fi
+
+      - name: Initialize App Framework
+        run: |
+          npm install @capacitor/core @capacitor/cli
+          npx cap init "CTA Cartoon Thief Auto" "com.addevelopers.cartoonthiefauto" --web-dir=www
+
+      - name: Add Android Native Platform
+        run: |
+          npm install @capacitor/android
+          npx cap add android
+
+      - name: Sync Game HTML Assets
+        run: npx cap sync android
+
+      - name: Overwrite Native Android Icons Globally
+        run: |
+          # If your custom icon exists, overwrite every single default placeholder layout inside Android Studio
+          if [ -f icon.png ]; then
+            # Define all density resource locations where Android expects launcher assets
+            DIRS=(
+              "android/app/src/main/res/mipmap-mdpi"
+              "android/app/src/main/res/mipmap-hdpi"
+              "android/app/src/main/res/mipmap-xhdpi"
+              "android/app/src/main/res/mipmap-xxhdpi"
+              "android/app/src/main/res/mipmap-xxxhdpi"
+            )
+            
+            for DIR in "${DIRS[@]}"; do
+              mkdir -p "$DIR"
+              # Overwrite both standard, round, and foreground variations so your icon shows up on ALL phone screens
+              cp icon.png "$DIR/ic_launcher.png"
+              cp icon.png "$DIR/ic_launcher_round.png"
+              cp icon.png "$DIR/ic_launcher_foreground.png"
+            done
+          fi
+
+      - name: Fix Kotlin Dependency Overlap
+        run: |
+          echo "configurations.all { resolutionStrategy { force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'; force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22' } }" >> android/app/build.gradle
+
+      - name: Compile Official App Bundle (AAB)
+        run: |
+          cd android
+          ./gradlew :app:bundleRelease
+
+      - name: Deliver Production Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CartoonThiefAuto-Production-AAB
+          path: android/app/build/outputs/bundle/release/app-release-unsigned.aab
+          
