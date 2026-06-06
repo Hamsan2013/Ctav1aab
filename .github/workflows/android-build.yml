@@ -49,12 +49,9 @@ jobs:
           cp CTA-CartoonThiefAuto-V3-Fixed.html www/index.html
           if [ -f icon.png ]; then cp icon.png www/icon.png; fi
 
-      - name: Install Dependencies
-        run: |
-          npm install --legacy-peer-deps
-
       - name: Initialize App Framework
         run: |
+          # 🚀 This dynamically builds the package.json file first!
           npm install @capacitor/core @capacitor/cli --save
           npx cap init "CTA Cartoon Thief Auto" "com.addevelopers.cartoonthiefauto" --web-dir=www
 
