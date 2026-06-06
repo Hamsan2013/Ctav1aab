@@ -13,17 +13,34 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Required Assets
+        run: |
+          echo "📋 Checking for required assets..."
+          if [ ! -f "CTA-CartoonThiefAuto-V3-Fixed.html" ]; then
+            echo "❌ ERROR: CTA-CartoonThiefAuto-V3-Fixed.html not found!"
+            exit 1
+          fi
+          if [ ! -f "icon.png" ]; then
+            echo "⚠️ WARNING: icon.png not found"
+          else
+            echo "✅ icon.png found"
+          fi
 
       - name: Setup Node.js Environment
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Setup Java JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '21'
+          cache: 'gradle'
 
       - name: Setup Android SDK Tools
         uses: android-actions/setup-android@v4
@@ -34,57 +51,68 @@ jobs:
           cp CTA-CartoonThiefAuto-V3-Fixed.html www/index.html
           if [ -f icon.png ]; then cp icon.png www/icon.png; fi
 
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+
       - name: Initialize App Framework
         run: |
-          npm install @capacitor/core @capacitor/cli
+          npm install @capacitor/core @capacitor/cli --save
           npx cap init "CTA Cartoon Thief Auto" "com.addevelopers.cartoonthiefauto" --web-dir=www
 
       - name: Add Android Native Platform
         run: |
-          npm install @capacitor/android
+          npm install @capacitor/android --save
           npx cap add android
 
       - name: Sync Game HTML Assets
-        run: npx cap sync android
+        run: |
+          npx cap sync android
 
-      - name: Overwrite Native Android Icons Safely
+      - name: Setup Custom Icons Cleanly
         run: |
           if [ -f icon.png ]; then
-            # 🌟 AAPT2 FIX 1: Remove adaptive XML configurations so Gradle safely uses your flat PNG instead
+            echo "🎨 Overwriting placeholder adaptive icon folders..."
             rm -rf android/app/src/main/res/mipmap-anydpi-v26
-            
-            DIRS=(
-              "android/app/src/main/res/mipmap-mdpi"
-              "android/app/src/main/res/mipmap-hdpi"
-              "android/app/src/main/res/mipmap-xhdpi"
-              "android/app/src/main/res/mipmap-xxhdpi"
-              "android/app/src/main/res/mipmap-xxxhdpi"
-            )
-            
-            for DIR in "${DIRS[@]}"; do
+            for folder in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              DIR="android/app/src/main/res/$folder"
               mkdir -p "$DIR"
               cp icon.png "$DIR/ic_launcher.png"
               cp icon.png "$DIR/ic_launcher_round.png"
               cp icon.png "$DIR/ic_launcher_foreground.png"
+              echo "✅ Icons set for $folder"
             done
           fi
 
-      - name: Fix Kotlin and Disable PNG Crunching
+      - name: Fix Gradle Configuration (Flat Commands)
         run: |
-          # Fix Kotlin libraries
+          echo "🔧 Injecting dependency logic directly into build profile..."
           echo "configurations.all { resolutionStrategy { force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'; force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22' } }" >> android/app/build.gradle
-          
-          # 🌟 AAPT2 FIX 2: Force Gradle to bypass strict PNG file crunching validations
-          sed -i '/android {/a \    aaptOptions { cruncherEnabled = false; useNewCruncher = false }' android/app/build.gradle
+          echo "android { aaptOptions { cruncherEnabled = false; useNewCruncher = false } }" >> android/app/build.gradle
+          echo "✅ Gradle files successfully patched!"
 
-      - name: Compile Official App Bundle (AAB)
+      - name: Build Android App Bundle
         run: |
           cd android
-          ./gradlew :app:bundleRelease
+          ./gradlew clean bundleRelease
 
-      - name: Deliver Production Bundle Artifact
+      - name: Verify Build Output
+        run: |
+          echo "📍 Verifying generated bundles..."
+          if [ -f "android/app/build/outputs/bundle/release/app-release.aab" ]; then
+            echo "✅ Production Bundle Found!"
+          elif [ -f "android/app/build/outputs/bundle/release/app-release-unsigned.aab" ]; then
+            echo "✅ Unsigned Production Bundle Found!"
+          else
+            echo "❌ Critical Error: Build didn't emit a package file."
+            exit 1
+          fi
+
+      - name: Upload Unsigned AAB Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CartoonThiefAuto-Production-AAB
-          path: android/app/build/outputs/bundle/release/app-release-unsigned.aab
+          name: CartoonThiefAuto-AAB
+          path: android/app/build/outputs/bundle/release/app-release*.aab
+          retention-days: 30
+          if-no-files-found: error
           
