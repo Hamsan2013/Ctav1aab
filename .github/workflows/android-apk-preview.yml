@@ -19,10 +19,17 @@ jobs:
       - name: Validate Required Assets
         run: |
           echo "📋 Checking for required assets..."
-          if [ ! -f "CTA-CartoonThiefAuto-V3-Fixed.html" ]; then
-            echo "❌ ERROR: CTA-CartoonThiefAuto-V3-Fixed.html not found!"
+          
+          # Dynamically search for any game HTML file in the root directory
+          HTML_FILE=$(ls *.html 2>/dev/null | head -n 1)
+          
+          if [ -z "$HTML_FILE" ]; then
+            echo "❌ ERROR: No game HTML file found in the root directory!"
             exit 1
+          else
+            echo "✅ Found HTML game file: $HTML_FILE"
           fi
+          
           if [ ! -f "icon.png" ]; then
             echo "❌ ERROR: icon.png not found!"
             exit 1
@@ -46,7 +53,12 @@ jobs:
       - name: Create Web Distribution Structure
         run: |
           mkdir -p www
-          cp CTA-CartoonThiefAuto-V3-Fixed.html www/index.html
+          
+          # Automatically find your game file and copy it as index.html
+          HTML_FILE=$(ls *.html | head -n 1)
+          cp "$HTML_FILE" www/index.html
+          echo "🌐 Packed $HTML_FILE into Capacitor web directory as index.html"
+          
           cp icon.png www/icon.png
 
       - name: Initialize App Framework
@@ -89,7 +101,7 @@ jobs:
       - name: Sign APK for Device Installation
         run: |
           echo "🔐 Generating debug key and signing APK..."
-          # 1. Create a temporary debug keystore matrix on the flyer
+          # 1. Create a temporary debug keystore matrix on the fly
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           
           # 2. Locate apksigner utility from Android SDK Build Tools
@@ -115,4 +127,3 @@ jobs:
           name: CartoonThiefAuto-Installable-APK
           path: android/app/build/outputs/apk/release/CartoonThiefAuto-Preview.apk
           retention-days: 14
-          
